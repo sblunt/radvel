@@ -87,17 +87,19 @@ def _status_message_CLI(statevars):
 
     msg1 = (
             # barline + 
-            " {:d}/{:d} ({:3.1f}%) steps complete"
-    ).format(statevars.ncomplete, statevars.totsteps, statevars.pcomplete)
+            " {:d}/{:d} ({:3.1f}%) steps complete; "
+    ).format(
+        statevars.ncomplete, statevars.totsteps, statevars.pcomplete)
 
-    print(msg1, end='\r')
-
-    # msg2 = (
-    #     "Running {:.2f} steps/s; Mean acceptance rate = {:3.1f}%; "
-    #     "Min Auto Factor = {:3.0f}; \nMax Auto Relative-Change = {:5.3}; "
-    #     "Min Tz = {:.1f}; Max G-R = {:5.3f}\n"
-    # ).format(statevars.rate, statevars.ar, statevars.minafactor, statevars.maxarchange,
-    #          statevars.mintz, statevars.maxgr)
+    msg2 = (
+        # "Running {:.2f} steps/s; Mean acceptance rate = {:3.1f}%; "
+        "Min Auto Factor = {:3.0f}; Max Auto Relative-Change = {:5.3}; "
+        "Min Tz = {:.1f}; Max G-R = {:5.3f}"
+    ).format(
+        # statevars.rate, statevars.ar, 
+        statevars.minafactor, statevars.maxarchange,
+             statevars.mintz, statevars.maxgr)
+    print(msg1 + msg2, end='\r')
 
     # statevars.screen.addstr(0, 0, msg1+ '\n' + msg2)
 

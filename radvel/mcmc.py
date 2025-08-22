@@ -87,10 +87,10 @@ def _status_message_CLI(statevars):
 
     msg1 = (
             # barline + 
-            " {:d}/{:d} ({:3.1f}%) steps complete; "
+            " {:d}/{:d} ({:3.1f}%) steps complete"
     ).format(statevars.ncomplete, statevars.totsteps, statevars.pcomplete)
 
-    print(msg1, end='/r')
+    print(msg1, end='\r')
 
     # msg2 = (
     #     "Running {:.2f} steps/s; Mean acceptance rate = {:3.1f}%; "
@@ -227,263 +227,263 @@ def mcmc(post, nwalkers=50, nrun=10000, ensembles=8, checkinterval=50, minAfacto
 
     statevars.reset()
 
-    try:
-        if save and savename is None:
-            raise ValueError('save set to true but no savename provided')
+    # try:
+    if save and savename is None:
+        raise ValueError('save set to true but no savename provided')
+
+    if save:
+        h5f = h5py.File(savename, 'a')
+
+    if proceed:
+        if proceedname is None:
+            raise ValueError('proceed set to true but no proceedname provided')
+        else:
+            h5p = h5py.File(proceedname, 'r')
+            msg = 'Loading chains and run information from previous MCMC'
+            print(msg)
+        statevars.prechains = []
+        statevars.prelog_probs = []
+        statevars.preaccepted = []
+        statevars.preburned = h5p['burned'][0]
+        statevars.minafactor = h5p['crit'][0]
+        statevars.maxarchange = h5p['crit'][1]
+        statevars.mintz = h5p['crit'][2]
+        statevars.maxgr = h5p['crit'][3]
+        statevars.autosamples = list(h5p['autosample'])
+        statevars.automin = list(h5p['automin'])
+        statevars.automean = list(h5p['automean'])
+        statevars.automax = list(h5p['automax'])
+        for i in range(0,int((len(h5p.keys()) - 6)/3)):
+            str_chain = str(i) + '_chain'
+            str_log_prob = str(i) + '_log_prob'
+            str_accepted = str(i) + '_accepted'
+            statevars.prechains.append(h5p[str_chain])
+            statevars.prelog_probs.append(h5p[str_log_prob])
+            statevars.preaccepted.append(h5p[str_accepted])
+
+    # check if one or more likelihoods are GPs
+    if isinstance(post.likelihood, radvel.likelihood.CompositeLikelihood):
+        check_gp = [like for like in post.likelihood.like_list if isinstance(like, radvel.likelihood.GPLikelihood)]
+    else:
+        check_gp = isinstance(post.likelihood, radvel.likelihood.GPLikelihood)
+
+    # np_info = np.__config__.blas_opt_info
+    # if 'extra_link_args' in np_info.keys() \
+    #  and check_gp \
+    #  and ('-Wl,Accelerate' in np_info['extra_link_args']) \
+    #  and serial == False:
+    #     print("WARNING: Parallel processing with Gaussian Processes will not work with your current"
+    #                 + " numpy installation. See radvel.readthedocs.io/en/latest/OSX-multiprocessing.html"
+    #                 + " for more details. Running in serial with " + str(ensembles) + " ensembles.")
+    #     serial = True
+
+    statevars.ensembles = ensembles
+    statevars.nwalkers = nwalkers
+    statevars.checkinterval = checkinterval - 1
+
+    nrun = int(nrun)
+
+    # Get an initial array value
+    pi = post.get_vary_params()
+    statevars.ndim = pi.size
+
+    if nwalkers < 2 * statevars.ndim:
+        print("WARNING: Number of walkers is less than 2 times number of free parameters. " +
+                "Adjusting number of walkers to {}".format(2 * statevars.ndim))
+        statevars.nwalkers = 2 * statevars.ndim
+
+    if proceed:
+        if len(h5p.keys()) != (3 * statevars.ensembles + 6) or h5p['0_chain'].shape[2] != statevars.ndim \
+            or h5p['0_chain'].shape[1] != statevars.nwalkers:
+            raise ValueError('nensembles, nwalkers, and the number of ' +
+                                'parameters must be equal to those from previous run.')
+
+    # set up perturbation size
+
+    pscales = []
+    names = post.name_vary_params()
+    for i,par in enumerate(post.vary_params):
+        val = post.vector.vector[par][0]
+        if post.vector.vector[par][2] == 0:
+            if names[i].startswith('per'):
+                pscale = np.abs(val * 1e-5*np.log10(val))
+            elif names[i].startswith('logper'):
+                pscale = np.abs(1e-5 * val)
+            elif names[i].startswith('tc'):
+                pscale = 0.1
+            elif val == 0:
+                pscale = .00001
+            else:
+                pscale = np.abs(0.10 * val)
+            post.vector.vector[par][2] = pscale
+        else:
+            pscale = post.vector.vector[par][2]
+        pscales.append(pscale)
+    pscales = np.array(pscales)
+
+    statevars.samplers = []
+    statevars.samples = []
+    statevars.initial_positions = []
+    for e in range(ensembles):
+        pi = post.get_vary_params()
+        p0 = np.vstack([pi]*statevars.nwalkers)
+        p0 += [np.random.rand(statevars.ndim)*pscales for i in range(statevars.nwalkers)]
+        if not proceed:
+            statevars.initial_positions.append(p0)
+        else:
+            statevars.initial_positions.append(statevars.prechains[e][-1, :, :])
+        statevars.samplers.append(emcee.EnsembleSampler(statevars.nwalkers, statevars.ndim, post.logprob_array,
+                                                        threads=1))
+
+    if proceed:
+        for i, sampler in enumerate(statevars.samplers):
+            sampler.backend.grow(statevars.prechains[i].shape[0], None)
+            sampler.backend.chain = statevars.prechains[i]
+            sampler.backend.log_prob = statevars.prelog_probs[i]
+            sampler.backend.accepted = statevars.preaccepted[i]
+            sampler.backend.iteration = statevars.prechains[i].shape[0]
+
+    num_run = int(np.round(nrun / (checkinterval -1)))
+    statevars.totsteps = nrun*statevars.nwalkers*statevars.ensembles
+    statevars.mixcount = 0
+    statevars.ismixed = 0
+    if proceed and statevars.preburned != 0:
+        statevars.burn_complete = True
+        statevars.nburn = statevars.preburned
+    else:
+        statevars.burn_complete = False
+        statevars.nburn = 0
+    statevars.ncomplete = statevars.nburn
+    statevars.pcomplete = 0
+    statevars.rate = 0
+    statevars.ar = 0
+    statevars.minAfactor = -1
+    statevars.maxArchange = np.inf
+    statevars.mintz = -1
+    statevars.maxgr = np.inf
+    statevars.t0 = time.time()
+
+    for r in range(num_run):
+        t1 = time.time()
+        mcmc_input_array = []
+        for i, sampler in enumerate(statevars.samplers):
+            if sampler.iteration <= 1 or statevars.proceed_started == 0:
+                p1 = statevars.initial_positions[i]
+                statevars.proceed_started = 1
+            else:
+                p1 = sampler.get_last_sample()
+            for sample in sampler.sample(p1, store=True):
+                mcmc_input = (sampler, p1, (checkinterval - 1))
+                mcmc_input_array.append(mcmc_input)
+
+        if serial:
+            statevars.samplers = []
+            for i in range(ensembles):
+                result = _domcmc(mcmc_input_array[i])
+                statevars.samplers.append(result)
+        else:
+            pool = mp.Pool(statevars.ensembles)
+            statevars.samplers = pool.map(_domcmc, mcmc_input_array)
+            pool.close()  # terminates worker processes once all work is done
+            pool.join()   # waits for all processes to finish before proceeding
+
+        t2 = time.time()
+        statevars.interval = t2 - t1
+
+        convergence_check(minAfactor=minAfactor, maxArchange=maxArchange, maxGR=maxGR, minTz=minTz,
+                            minsteps=minsteps, minpercent=minpercent, headless=headless)
 
         if save:
-            h5f = h5py.File(savename, 'a')
-
-        if proceed:
-            if proceedname is None:
-                raise ValueError('proceed set to true but no proceedname provided')
-            else:
-                h5p = h5py.File(proceedname, 'r')
-                msg = 'Loading chains and run information from previous MCMC'
-                print(msg)
-            statevars.prechains = []
-            statevars.prelog_probs = []
-            statevars.preaccepted = []
-            statevars.preburned = h5p['burned'][0]
-            statevars.minafactor = h5p['crit'][0]
-            statevars.maxarchange = h5p['crit'][1]
-            statevars.mintz = h5p['crit'][2]
-            statevars.maxgr = h5p['crit'][3]
-            statevars.autosamples = list(h5p['autosample'])
-            statevars.automin = list(h5p['automin'])
-            statevars.automean = list(h5p['automean'])
-            statevars.automax = list(h5p['automax'])
-            for i in range(0,int((len(h5p.keys()) - 6)/3)):
+            for i, sampler in enumerate(statevars.samplers):
                 str_chain = str(i) + '_chain'
                 str_log_prob = str(i) + '_log_prob'
                 str_accepted = str(i) + '_accepted'
-                statevars.prechains.append(h5p[str_chain])
-                statevars.prelog_probs.append(h5p[str_log_prob])
-                statevars.preaccepted.append(h5p[str_accepted])
-
-        # check if one or more likelihoods are GPs
-        if isinstance(post.likelihood, radvel.likelihood.CompositeLikelihood):
-            check_gp = [like for like in post.likelihood.like_list if isinstance(like, radvel.likelihood.GPLikelihood)]
-        else:
-            check_gp = isinstance(post.likelihood, radvel.likelihood.GPLikelihood)
-
-        # np_info = np.__config__.blas_opt_info
-        # if 'extra_link_args' in np_info.keys() \
-        #  and check_gp \
-        #  and ('-Wl,Accelerate' in np_info['extra_link_args']) \
-        #  and serial == False:
-        #     print("WARNING: Parallel processing with Gaussian Processes will not work with your current"
-        #                 + " numpy installation. See radvel.readthedocs.io/en/latest/OSX-multiprocessing.html"
-        #                 + " for more details. Running in serial with " + str(ensembles) + " ensembles.")
-        #     serial = True
-
-        statevars.ensembles = ensembles
-        statevars.nwalkers = nwalkers
-        statevars.checkinterval = checkinterval - 1
-
-        nrun = int(nrun)
-
-        # Get an initial array value
-        pi = post.get_vary_params()
-        statevars.ndim = pi.size
-
-        if nwalkers < 2 * statevars.ndim:
-            print("WARNING: Number of walkers is less than 2 times number of free parameters. " +
-                  "Adjusting number of walkers to {}".format(2 * statevars.ndim))
-            statevars.nwalkers = 2 * statevars.ndim
-
-        if proceed:
-            if len(h5p.keys()) != (3 * statevars.ensembles + 6) or h5p['0_chain'].shape[2] != statevars.ndim \
-               or h5p['0_chain'].shape[1] != statevars.nwalkers:
-                raise ValueError('nensembles, nwalkers, and the number of ' +
-                                 'parameters must be equal to those from previous run.')
-
-        # set up perturbation size
-
-        pscales = []
-        names = post.name_vary_params()
-        for i,par in enumerate(post.vary_params):
-            val = post.vector.vector[par][0]
-            if post.vector.vector[par][2] == 0:
-                if names[i].startswith('per'):
-                    pscale = np.abs(val * 1e-5*np.log10(val))
-                elif names[i].startswith('logper'):
-                    pscale = np.abs(1e-5 * val)
-                elif names[i].startswith('tc'):
-                    pscale = 0.1
-                elif val == 0:
-                    pscale = .00001
+                if str_chain in h5f.keys():
+                    del h5f[str_chain]
+                if str_log_prob in h5f.keys():
+                    del h5f[str_log_prob]
+                if str_accepted in h5f.keys():
+                    del h5f[str_accepted]
+                if 'crit' in h5f.keys():
+                    del h5f['crit']
+                if 'autosample' in h5f.keys():
+                    del h5f['autosample']
+                if 'automin' in h5f.keys():
+                    del h5f['automin']
+                if 'automean' in h5f.keys():
+                    del h5f['automean']
+                if 'automax' in h5f.keys():
+                    del h5f['automax']
+                if 'burned' in h5f.keys():
+                    del h5f['burned']
+                h5f.create_dataset(str_chain, data=sampler.get_chain())
+                h5f.create_dataset(str_log_prob, data=sampler.get_log_prob())
+                h5f.create_dataset(str_accepted, data=sampler.backend.accepted)
+                h5f.create_dataset('crit', data=[statevars.minafactor, statevars.maxarchange, statevars.mintz,
+                                                    statevars.maxgr])
+                h5f.create_dataset('autosample', data=statevars.autosamples)
+                h5f.create_dataset('automin', data=statevars.automin)
+                h5f.create_dataset('automean', data=statevars.automean)
+                h5f.create_dataset('automax', data=statevars.automax)
+                if statevars.burn_complete==True:
+                    h5f.create_dataset('burned', data=[statevars.nburn])
                 else:
-                    pscale = np.abs(0.10 * val)
-                post.vector.vector[par][2] = pscale
-            else:
-                pscale = post.vector.vector[par][2]
-            pscales.append(pscale)
-        pscales = np.array(pscales)
+                    h5f.create_dataset('burned', data=[0])
 
-        statevars.samplers = []
-        statevars.samples = []
-        statevars.initial_positions = []
-        for e in range(ensembles):
-            pi = post.get_vary_params()
-            p0 = np.vstack([pi]*statevars.nwalkers)
-            p0 += [np.random.rand(statevars.ndim)*pscales for i in range(statevars.nwalkers)]
-            if not proceed:
-                statevars.initial_positions.append(p0)
-            else:
-                statevars.initial_positions.append(statevars.prechains[e][-1, :, :])
-            statevars.samplers.append(emcee.EnsembleSampler(statevars.nwalkers, statevars.ndim, post.logprob_array,
-                                                            threads=1))
-
-        if proceed:
+        # Burn-in complete after maximum G-R statistic first reaches burnGR or minAfactor reaches burnAfactor
+        # reset samplers
+        if not statevars.burn_complete and (statevars.maxgr <= burnGR or burnAfactor <= statevars.minafactor):
             for i, sampler in enumerate(statevars.samplers):
-                sampler.backend.grow(statevars.prechains[i].shape[0], None)
-                sampler.backend.chain = statevars.prechains[i]
-                sampler.backend.log_prob = statevars.prelog_probs[i]
-                sampler.backend.accepted = statevars.preaccepted[i]
-                sampler.backend.iteration = statevars.prechains[i].shape[0]
-
-        num_run = int(np.round(nrun / (checkinterval -1)))
-        statevars.totsteps = nrun*statevars.nwalkers*statevars.ensembles
-        statevars.mixcount = 0
-        statevars.ismixed = 0
-        if proceed and statevars.preburned != 0:
+                statevars.initial_positions[i] = sampler.get_last_sample()
+                sampler.reset()
+                statevars.samplers[i] = sampler
+            msg = (
+                "\nDiscarding burn-in now that the chains are marginally "
+                "well-mixed\n"
+            )
+            print(msg)
+            statevars.nburn = statevars.ncomplete
             statevars.burn_complete = True
-            statevars.nburn = statevars.preburned
-        else:
-            statevars.burn_complete = False
-            statevars.nburn = 0
-        statevars.ncomplete = statevars.nburn
-        statevars.pcomplete = 0
-        statevars.rate = 0
-        statevars.ar = 0
-        statevars.minAfactor = -1
-        statevars.maxArchange = np.inf
-        statevars.mintz = -1
-        statevars.maxgr = np.inf
-        statevars.t0 = time.time()
 
-        for r in range(num_run):
-            t1 = time.time()
-            mcmc_input_array = []
-            for i, sampler in enumerate(statevars.samplers):
-                if sampler.iteration <= 1 or statevars.proceed_started == 0:
-                    p1 = statevars.initial_positions[i]
-                    statevars.proceed_started = 1
-                else:
-                    p1 = sampler.get_last_sample()
-                for sample in sampler.sample(p1, store=True):
-                    mcmc_input = (sampler, p1, (checkinterval - 1))
-                    mcmc_input_array.append(mcmc_input)
-
-            if serial:
-                statevars.samplers = []
-                for i in range(ensembles):
-                    result = _domcmc(mcmc_input_array[i])
-                    statevars.samplers.append(result)
-            else:
-                pool = mp.Pool(statevars.ensembles)
-                statevars.samplers = pool.map(_domcmc, mcmc_input_array)
-                pool.close()  # terminates worker processes once all work is done
-                pool.join()   # waits for all processes to finish before proceeding
-
-            t2 = time.time()
-            statevars.interval = t2 - t1
-
-            convergence_check(minAfactor=minAfactor, maxArchange=maxArchange, maxGR=maxGR, minTz=minTz,
-                              minsteps=minsteps, minpercent=minpercent, headless=headless)
-
-            if save:
-                for i, sampler in enumerate(statevars.samplers):
-                    str_chain = str(i) + '_chain'
-                    str_log_prob = str(i) + '_log_prob'
-                    str_accepted = str(i) + '_accepted'
-                    if str_chain in h5f.keys():
-                        del h5f[str_chain]
-                    if str_log_prob in h5f.keys():
-                        del h5f[str_log_prob]
-                    if str_accepted in h5f.keys():
-                        del h5f[str_accepted]
-                    if 'crit' in h5f.keys():
-                        del h5f['crit']
-                    if 'autosample' in h5f.keys():
-                        del h5f['autosample']
-                    if 'automin' in h5f.keys():
-                        del h5f['automin']
-                    if 'automean' in h5f.keys():
-                        del h5f['automean']
-                    if 'automax' in h5f.keys():
-                        del h5f['automax']
-                    if 'burned' in h5f.keys():
-                        del h5f['burned']
-                    h5f.create_dataset(str_chain, data=sampler.get_chain())
-                    h5f.create_dataset(str_log_prob, data=sampler.get_log_prob())
-                    h5f.create_dataset(str_accepted, data=sampler.backend.accepted)
-                    h5f.create_dataset('crit', data=[statevars.minafactor, statevars.maxarchange, statevars.mintz,
-                                                     statevars.maxgr])
-                    h5f.create_dataset('autosample', data=statevars.autosamples)
-                    h5f.create_dataset('automin', data=statevars.automin)
-                    h5f.create_dataset('automean', data=statevars.automean)
-                    h5f.create_dataset('automax', data=statevars.automax)
-                    if statevars.burn_complete==True:
-                        h5f.create_dataset('burned', data=[statevars.nburn])
-                    else:
-                        h5f.create_dataset('burned', data=[0])
-
-            # Burn-in complete after maximum G-R statistic first reaches burnGR or minAfactor reaches burnAfactor
-            # reset samplers
-            if not statevars.burn_complete and (statevars.maxgr <= burnGR or burnAfactor <= statevars.minafactor):
-                for i, sampler in enumerate(statevars.samplers):
-                    statevars.initial_positions[i] = sampler.get_last_sample()
-                    sampler.reset()
-                    statevars.samplers[i] = sampler
-                msg = (
-                    "\nDiscarding burn-in now that the chains are marginally "
-                    "well-mixed\n"
-                )
-                print(msg)
-                statevars.nburn = statevars.ncomplete
-                statevars.burn_complete = True
-
-            if statevars.mixcount >= 2:
-                tf = time.time()
-                tdiff = tf - statevars.t0
-                tdiff,units = utils.time_print(tdiff)
-                msg = (
-                    "\nChains are well-mixed after {:d} steps! MCMC completed in "
-                    "{:3.1f} {:s}"
-                ).format(statevars.ncomplete, tdiff, units)
-                # _closescr()
-                print(msg)
-                break
-
-        print("\n")
-        if statevars.ismixed and statevars.mixcount < 2:
+        if statevars.mixcount >= 2:
+            tf = time.time()
+            tdiff = tf - statevars.t0
+            tdiff,units = utils.time_print(tdiff)
             msg = (
-                "MCMC: WARNING: chains did not pass 2 consecutive convergence "
-                "tests. They may be marginally well=mixed."
-            )
+                "\nChains are well-mixed after {:d} steps! MCMC completed in "
+                "{:3.1f} {:s}"
+            ).format(statevars.ncomplete, tdiff, units)
             # _closescr()
             print(msg)
-        elif not statevars.ismixed:
-            msg = (
-                "MCMC: WARNING: chains did not pass convergence tests. They are "
-                "likely not well-mixed."
-            )
-            # _closescr()
-            print(msg)
+            break
 
-        preshaped_chain = np.dstack(statevars.chains)
-        df = pd.DataFrame(
-            preshaped_chain.reshape(preshaped_chain.shape[0], preshaped_chain.shape[1]*preshaped_chain.shape[2]).transpose(),
-            columns=post.name_vary_params())
-        preshaped_ln = np.hstack(statevars.lnprob)
-        df['lnprobability'] = preshaped_ln.reshape(preshaped_chain.shape[1]*preshaped_chain.shape[2])
-        df = df.iloc[::thin]
+    print("\n")
+    if statevars.ismixed and statevars.mixcount < 2:
+        msg = (
+            "MCMC: WARNING: chains did not pass 2 consecutive convergence "
+            "tests. They may be marginally well=mixed."
+        )
+        # _closescr()
+        print(msg)
+    elif not statevars.ismixed:
+        msg = (
+            "MCMC: WARNING: chains did not pass convergence tests. They are "
+            "likely not well-mixed."
+        )
+        # _closescr()
+        print(msg)
 
-        statevars.factor = [minAfactor] * len(statevars.autosamples)
+    preshaped_chain = np.dstack(statevars.chains)
+    df = pd.DataFrame(
+        preshaped_chain.reshape(preshaped_chain.shape[0], preshaped_chain.shape[1]*preshaped_chain.shape[2]).transpose(),
+        columns=post.name_vary_params())
+    preshaped_ln = np.hstack(statevars.lnprob)
+    df['lnprobability'] = preshaped_ln.reshape(preshaped_chain.shape[1]*preshaped_chain.shape[2])
+    df = df.iloc[::thin]
 
-        return df
+    statevars.factor = [minAfactor] * len(statevars.autosamples)
+
+    return df
 
     # except KeyboardInterrupt:
     #     curses.endwin()

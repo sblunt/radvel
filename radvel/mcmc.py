@@ -1,5 +1,5 @@
 import time
-import curses
+# import curses
 import sys
 import os
 
@@ -43,12 +43,12 @@ def isnotebook():
         return False      # Probably standard Python interpreter
 
 
-def _closescr():
-    if isnotebook() == False:
-        try:
-            curses.endwin()
-        except:
-             pass
+# def _closescr():
+#     if isnotebook() == False:
+#         try:
+#             curses.endwin()
+#         except:
+#              pass
 
 
 def _progress_bar(step, totsteps, width=50):
@@ -79,26 +79,29 @@ def _status_message_NB(statevars):
 
 def _status_message_CLI(statevars):
 
-    statevars.screen = curses.initscr()
+    # statevars.screen = curses.initscr()
 
-    statevars.screen.clear()
+    # statevars.screen.clear()
 
-    barline = _progress_bar(statevars.ncomplete, statevars.totsteps)
+    # barline = _progress_bar(statevars.ncomplete, statevars.totsteps)
 
     msg1 = (
-            barline + " {:d}/{:d} ({:3.1f}%) steps complete; "
+            # barline + 
+            " {:d}/{:d} ({:3.1f}%) steps complete; "
     ).format(statevars.ncomplete, statevars.totsteps, statevars.pcomplete)
 
-    msg2 = (
-        "Running {:.2f} steps/s; Mean acceptance rate = {:3.1f}%; "
-        "Min Auto Factor = {:3.0f}; \nMax Auto Relative-Change = {:5.3}; "
-        "Min Tz = {:.1f}; Max G-R = {:5.3f}\n"
-    ).format(statevars.rate, statevars.ar, statevars.minafactor, statevars.maxarchange,
-             statevars.mintz, statevars.maxgr)
+    print(msg1, end='/r')
 
-    statevars.screen.addstr(0, 0, msg1+ '\n' + msg2)
+    # msg2 = (
+    #     "Running {:.2f} steps/s; Mean acceptance rate = {:3.1f}%; "
+    #     "Min Auto Factor = {:3.0f}; \nMax Auto Relative-Change = {:5.3}; "
+    #     "Min Tz = {:.1f}; Max G-R = {:5.3f}\n"
+    # ).format(statevars.rate, statevars.ar, statevars.minafactor, statevars.maxarchange,
+    #          statevars.mintz, statevars.maxgr)
 
-    statevars.screen.refresh()
+    # statevars.screen.addstr(0, 0, msg1+ '\n' + msg2)
+
+    # statevars.screen.refresh()
 
 
 def convergence_check(minAfactor, maxArchange, maxGR, minTz, minsteps, minpercent, headless):
@@ -450,7 +453,7 @@ def mcmc(post, nwalkers=50, nrun=10000, ensembles=8, checkinterval=50, minAfacto
                     "\nChains are well-mixed after {:d} steps! MCMC completed in "
                     "{:3.1f} {:s}"
                 ).format(statevars.ncomplete, tdiff, units)
-                _closescr()
+                # _closescr()
                 print(msg)
                 break
 
@@ -460,14 +463,14 @@ def mcmc(post, nwalkers=50, nrun=10000, ensembles=8, checkinterval=50, minAfacto
                 "MCMC: WARNING: chains did not pass 2 consecutive convergence "
                 "tests. They may be marginally well=mixed."
             )
-            _closescr()
+            # _closescr()
             print(msg)
         elif not statevars.ismixed:
             msg = (
                 "MCMC: WARNING: chains did not pass convergence tests. They are "
                 "likely not well-mixed."
             )
-            _closescr()
+            # _closescr()
             print(msg)
 
         preshaped_chain = np.dstack(statevars.chains)
@@ -482,8 +485,8 @@ def mcmc(post, nwalkers=50, nrun=10000, ensembles=8, checkinterval=50, minAfacto
 
         return df
 
-    except KeyboardInterrupt:
-        curses.endwin()
+    # except KeyboardInterrupt:
+    #     curses.endwin()
 
 
 def convergence_calculate(chains, oldautocorrelation, minAfactor, maxArchange, minTz, maxGR):

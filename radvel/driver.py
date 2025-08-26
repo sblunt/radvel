@@ -75,7 +75,7 @@ def plots(args):
                 GPPlot.plot_multipanel()
             else:
                 RVPlot = orbit_plots.MultipanelPlot(
-                    post, saveplot=saveto, **args.plotkw
+                    post, saveplot=saveto, planet_letters=P.planet_letters, **args.plotkw
                 )
                 RVPlot.plot_multipanel()
 

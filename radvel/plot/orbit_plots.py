@@ -64,7 +64,7 @@ class MultipanelPlot(object):
                  phase_nrows=None, phase_ncols=None, uparams=None, telfmts={}, legend=True,
                  phase_limits=[], nobin=False, phasetext_size='large', rv_phase_space=0.08,
                  figwidth=7.5, fit_linewidth=2.0, set_xlim=None, text_size=9, highlight_last=False,
-                 show_rms=False, legend_kwargs=dict(loc='best'), status=None):
+                 show_rms=False, legend_kwargs=dict(loc='best'), status=None, planet_letters=None):
 
         self.post = copy.deepcopy(post)
         self.saveplot = saveplot
@@ -92,6 +92,7 @@ class MultipanelPlot(object):
         self.highlight_last = highlight_last
         self.show_rms = show_rms
         self.legend_kwargs = legend_kwargs
+        self.planet_letters = planet_letters
         rcParams['font.size'] = text_size
 
         if status is not None:
@@ -328,6 +329,9 @@ class MultipanelPlot(object):
             ax.set_ylim(-self.yscale_sigma*scale, self.yscale_sigma*scale)
         
         keys = [p+str(pnum) for p in ['per', 'k', 'e']]
+
+        if self.planet_letters is not None:
+            self.post.params.planet_letters = self.planet_letters
 
         labels = [self.post.params.tex_labels().get(k, k) for k in keys]
         if pnum < self.num_planets:

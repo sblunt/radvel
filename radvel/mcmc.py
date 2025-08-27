@@ -434,30 +434,30 @@ def mcmc(post, nwalkers=50, nrun=10000, ensembles=8, checkinterval=50, minAfacto
 
         # Burn-in complete after maximum G-R statistic first reaches burnGR or minAfactor reaches burnAfactor
         # reset samplers
-        if not statevars.burn_complete and (statevars.maxgr <= burnGR or burnAfactor <= statevars.minafactor):
-            for i, sampler in enumerate(statevars.samplers):
-                statevars.initial_positions[i] = sampler.get_last_sample()
-                sampler.reset()
-                statevars.samplers[i] = sampler
-            msg = (
-                "\nDiscarding burn-in now that the chains are marginally "
-                "well-mixed\n"
-            )
-            print(msg)
-            statevars.nburn = statevars.ncomplete
-            statevars.burn_complete = True
+        # if not statevars.burn_complete and (statevars.maxgr <= burnGR or burnAfactor <= statevars.minafactor):
+        #     for i, sampler in enumerate(statevars.samplers):
+        #         statevars.initial_positions[i] = sampler.get_last_sample()
+        #         sampler.reset()
+        #         statevars.samplers[i] = sampler
+        #     msg = (
+        #         "\nDiscarding burn-in now that the chains are marginally "
+        #         "well-mixed\n"
+        #     )
+        #     print(msg)
+        #     statevars.nburn = statevars.ncomplete
+        #     statevars.burn_complete = True
 
-        if statevars.mixcount >= 2:
-            tf = time.time()
-            tdiff = tf - statevars.t0
-            tdiff,units = utils.time_print(tdiff)
-            msg = (
-                "\nChains are well-mixed after {:d} steps! MCMC completed in "
-                "{:3.1f} {:s}"
-            ).format(statevars.ncomplete, tdiff, units)
-            # _closescr()
-            print(msg)
-            break
+        # if statevars.mixcount >= 2:
+        #     tf = time.time()
+        #     tdiff = tf - statevars.t0
+        #     tdiff,units = utils.time_print(tdiff)
+        #     msg = (
+        #         "\nChains are well-mixed after {:d} steps! MCMC completed in "
+        #         "{:3.1f} {:s}"
+        #     ).format(statevars.ncomplete, tdiff, units)
+        #     # _closescr()
+        #     print(msg)
+        #     break
 
     print("\n")
     if statevars.ismixed and statevars.mixcount < 2:
